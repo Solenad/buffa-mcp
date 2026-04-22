@@ -1,8 +1,10 @@
-# Buffa MCP
+# buffa-mcp
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-0.1.0-lightgrey)](https://github.com/Rohann/buffa-mcp)
-[![Tests](https://img.shields.io/badge/tests-pytest-0C96FF)](https://github.com/Rohann/buffa-mcp/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) 
+![GitHub last commit](https://img.shields.io/github/last-commit/Solenad/buffa-mcp)
+![visitors](https://visitor-badge.laobi.icu/badge?page_id=Solenad.buffa-mcp.id)
 
 ## Project Name and Description
 
