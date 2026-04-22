@@ -148,6 +148,8 @@ class GitBranchWatcher:
         self._current_branch: Optional[str] = None
         self._watch_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._branch_diff_cache: dict[tuple[str, str], Set[str]] = {}
+        self._cache_lock = threading.Lock()
         self.logger = logging.getLogger(__name__)
     
     def _get_current_branch(self) -> Optional[str]:
@@ -227,6 +229,43 @@ class GitBranchWatcher:
             except Exception as e:
                 logger.error(f"Error in Git branch watch loop: {e}")
                 time.sleep(self.check_interval)  # Continue watching despite errors
+
+    def get_changed_files_between(self, old_branch: str, new_branch: str) -> Optional[Set[str]]:
+        """Get changed files between branches with branch-pair caching."""
+        cache_key = (old_branch, new_branch)
+
+        with self._cache_lock:
+            cached = self._branch_diff_cache.get(cache_key)
+            if cached is not None:
+                self.logger.debug("Using cached git diff for %s -> %s", old_branch, new_branch)
+                return set(cached)
+
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--name-only", old_branch, new_branch],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return None
+
+            changed_files = {
+                line.strip()
+                for line in result.stdout.strip().split("\n")
+                if line.strip()
+            }
+
+            with self._cache_lock:
+                self._branch_diff_cache[cache_key] = set(changed_files)
+            return changed_files
+        except Exception:
+            return None
+
+    def invalidate_cache(self) -> None:
+        """Invalidate cached branch diff state."""
+        with self._cache_lock:
+            self._branch_diff_cache.clear()
 
 
 class IndexingWatcher:
@@ -328,6 +367,10 @@ class IndexingWatcher:
     def _on_file_changes(self, changed_files: Set[str]) -> None:
         """Handle file system changes."""
         self.logger.info(f"File watcher detected {len(changed_files)} changes")
+
+        if self.git_watcher and changed_files:
+            self.git_watcher.invalidate_cache()
+
         try:
             self.index_callback(changed_files)
         except Exception as e:
@@ -346,34 +389,18 @@ class IndexingWatcher:
             # TODO: Implement full reindex signal
         elif self.config.on_git_branch_switch == "reindex_changed":
             self.logger.info("Triggering reindex of changed files due to Git branch switch")
-            # For now, we'll treat this as a file change event
-            # In a full implementation, we might want to get the actual changed files
-            # between branches using git diff
             try:
-                # Get list of files that differ between branches
-                result = subprocess.run(
-                    ["git", "diff", "--name-only", old_branch, new_branch],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                if result.returncode == 0:
-                    changed_files = set()
-                    for line in result.stdout.strip().split('\n'):
-                        if line.strip():
-                            changed_files.add(line.strip())
-                    
-                    if changed_files:
-                        self.logger.info(f"Git branch switch affected {len(changed_files)} files")
-                        self.index_callback(changed_files)
-                    else:
-                        self.logger.info("No file changes detected between branches")
-                else:
+                changed_files = self.git_watcher.get_changed_files_between(old_branch, new_branch) if self.git_watcher else None
+
+                if changed_files is None:
                     self.logger.warning("Failed to get diff between branches, falling back to file watcher")
-                    # Fall back to letting the file watcher handle actual file changes
+                elif changed_files:
+                    self.logger.info(f"Git branch switch affected {len(changed_files)} files")
+                    self.index_callback(changed_files)
+                else:
+                    self.logger.info("No file changes detected between branches")
             except Exception as e:
                 self.logger.error(f"Error processing Git branch switch: {e}")
-                # Fall back to normal file watching
         else:
             self.logger.warning(f"Unknown on_git_branch_switch value: {self.config.on_git_branch_switch}")
 

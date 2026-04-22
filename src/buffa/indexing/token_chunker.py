@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import re
-from typing import List, Optional
+from typing import Any, List, Optional
 from dataclasses import dataclass
 
 from buffa.shared.models import SourceChunk, ChunkMetadata
+
+
+try:
+    import tiktoken
+except ImportError:  # pragma: no cover - exercised in environments without tiktoken
+    tiktoken = None
 
 
 @dataclass
@@ -18,35 +24,60 @@ class TokenBudget:
 
 
 class TokenEstimator:
-    """Simple token estimator for text content."""
-    
-    @staticmethod
-    def estimate_tokens(text: str) -> int:
+    """Model-aware token estimator for text content."""
+
+    _encoder_cache: dict[str, Any] = {}
+
+    def __init__(self, encoding_name: str = "cl100k_base") -> None:
+        self.encoding_name = encoding_name
+        self._encoder = self._load_encoder(encoding_name)
+        self.using_bpe = self._encoder is not None
+
+    @classmethod
+    def _load_encoder(cls, encoding_name: str) -> Any:
+        """Load and cache a tokenizer encoder."""
+        if encoding_name in cls._encoder_cache:
+            return cls._encoder_cache[encoding_name]
+
+        if tiktoken is None:
+            cls._encoder_cache[encoding_name] = None
+            return None
+
+        try:
+            encoder = tiktoken.get_encoding(encoding_name)
+        except Exception:
+            encoder = None
+
+        cls._encoder_cache[encoding_name] = encoder
+        return encoder
+
+    def estimate_tokens(self, text: str) -> int:
         """
         Estimate token count for text.
-        
-        This is a simplified estimator - in production, we might use
-        model-specific tokenizers or more sophisticated methods.
-        
+
         Args:
             text: Text to estimate tokens for
-            
+
         Returns:
             Estimated token count
         """
-        # Simple approximation: split by whitespace and punctuation
-        # This is not accurate but serves as a placeholder
+        if not text:
+            return 0
+
+        if self._encoder is not None:
+            return len(self._encoder.encode(text, disallowed_special=()))
+
+        # Fallback approximation for environments without tiktoken.
         words = re.findall(r'\b\w+\b', text)
-        # Rough estimate: 1.3 tokens per word on average for code
         return int(len(words) * 1.3)
 
 
 class TokenBoundedChunker:
     """Chunks content to fit within token boundaries while preserving metadata."""
     
-    def __init__(self, budget: Optional[TokenBudget] = None):
+    def __init__(self, budget: Optional[TokenBudget] = None, estimator: Optional[TokenEstimator] = None) -> None:
         self.budget = budget or TokenBudget()
-        self.token_estimator = TokenEstimator()
+        self.token_estimator = estimator or TokenEstimator()
     
     def split_chunk(self, chunk: SourceChunk) -> List[SourceChunk]:
         """

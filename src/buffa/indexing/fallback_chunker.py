@@ -7,6 +7,7 @@ import re
 from typing import List, Optional
 from dataclasses import dataclass
 
+from buffa.indexing.token_chunker import TokenEstimator
 from buffa.shared.models import SourceChunk, ChunkMetadata
 
 
@@ -24,6 +25,7 @@ class FallbackChunker:
     
     def __init__(self):
         self.logger = self._setup_logger()
+        self.token_estimator = TokenEstimator()
     
     def _setup_logger(self):
         """Setup logger for the fallback chunker."""
@@ -194,10 +196,7 @@ class FallbackChunker:
     
     def _estimate_tokens(self, text: str) -> int:
         """Estimate token count for text content."""
-        # Simple approximation: split by whitespace and punctuation
-        words = re.findall(r'\b\w+\b', text)
-        # Rough estimate: 1.3 tokens per word on average for code
-        return int(len(words) * 1.3)
+        return self.token_estimator.estimate_tokens(text)
     
     def _calculate_confidence(self, content: str, chunks: List[SourceChunk], 
                             ext: str, caster_available: bool) -> float:

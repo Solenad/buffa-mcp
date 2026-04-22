@@ -19,6 +19,7 @@ class BatchResult:
     success: bool
     processed_count: int
     failed_count: int
+    results: List[Any] = field(default_factory=list)
     errors: List[NIMError] = field(default_factory=list)
     processing_time: float = 0.0
     
@@ -101,8 +102,7 @@ class BatchProcessor:
             
             # Collect results and errors
             if batch_result.success:
-                all_results.extend(batch_result.processed_count > 0 and 
-                                 getattr(batch_result, 'results', []) or [])
+                all_results.extend(batch_result.results)
             else:
                 all_errors.extend(batch_result.errors)
             
@@ -166,9 +166,10 @@ class BatchProcessor:
             except NIMError as e:
                 last_error = e
                 if attempt < self.max_retries and e.retryable:
+                    delay = min(self.retry_delay * (2 ** attempt), 8.0)
                     self.logger.warning(f"Batch {batch_num} attempt {attempt + 1} failed: {e}. "
-                                      f"Retrying in {self.retry_delay}s...")
-                    time.sleep(self.retry_delay)
+                                      f"Retrying in {delay}s...")
+                    time.sleep(delay)
                 else:
                     self.logger.error(f"Batch {batch_num} failed after {attempt + 1} attempts: {e}")
                     break  # No more retries or not retryable
@@ -182,9 +183,10 @@ class BatchProcessor:
                 )
                 last_error = nim_error
                 if attempt < self.max_retries and nim_error.retryable:
+                    delay = min(self.retry_delay * (2 ** attempt), 8.0)
                     self.logger.warning(f"Batch {batch_num} attempt {attempt + 1} failed: {e}. "
-                                      f"Retrying in {self.retry_delay}s...")
-                    time.sleep(self.retry_delay)
+                                      f"Retrying in {delay}s...")
+                    time.sleep(delay)
                 else:
                     self.logger.error(f"Batch {batch_num} failed after {attempt + 1} attempts: {e}")
                     break  # No more retries or not retryable
