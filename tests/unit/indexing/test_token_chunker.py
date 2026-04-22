@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+import buffa.indexing.token_chunker as token_chunker_module
 from buffa.indexing.token_chunker import TokenBoundedChunker, TokenEstimator, split_chunk_with_bounds
 from buffa.shared.models import SourceChunk, ChunkMetadata
 
@@ -14,6 +15,25 @@ def test_token_estimator():
     tokens = estimator.estimate_tokens("hello world")
     assert isinstance(tokens, int)
     assert tokens > 0
+
+
+def test_token_estimator_bpe_within_tolerance():
+    """Verify estimator stays within +/-20% of model tokenization when BPE is available."""
+    estimator = TokenEstimator()
+    sample = "def compute_total(items):\n    return sum(item.price for item in items if item.active)\n"
+
+    estimated = estimator.estimate_tokens(sample)
+    assert estimated > 0
+
+    if not estimator.using_bpe or token_chunker_module.tiktoken is None:
+        pytest.skip("tiktoken not available in current environment")
+
+    encoder = token_chunker_module.tiktoken.get_encoding(estimator.encoding_name)
+    actual = len(encoder.encode(sample, disallowed_special=()))
+    assert actual > 0
+
+    relative_error = abs(estimated - actual) / actual
+    assert relative_error <= 0.20
 
 
 def test_token_bounded_chunker_no_split_needed():

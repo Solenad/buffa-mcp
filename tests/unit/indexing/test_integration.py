@@ -5,9 +5,13 @@ from __future__ import annotations
 import tempfile
 import os
 from pathlib import Path
+import pytest
 from buffa.indexing.chunker import CASter
 from buffa.indexing.token_chunker import TokenBoundedChunker, split_chunk_with_bounds
 from buffa.indexing.fallback_chunker import FallbackChunker, ChunkingResult
+from buffa.indexing.embedder import BatchEmbedder
+from buffa.indexing.vector_store import VectorStore
+from buffa.nim.config import NimConfig
 from buffa.shared.models import SourceChunk, ChunkMetadata
 
 
@@ -259,3 +263,46 @@ class Test {
         for chunk in js_chunks:
             assert chunk.metadata.file_path == str(js_file)
             assert chunk.metadata.language == "javascript"
+
+
+def test_e2e_pipeline_with_mixed_language_files(monkeypatch: pytest.MonkeyPatch):
+    """Validate file -> chunker -> embedder -> vector store pipeline on mixed files."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        root = Path(temp_dir)
+
+        files = {
+            "sample.py": "def add(a, b):\n    return a + b\n",
+            "sample.js": "function sub(a, b) {\n  return a - b;\n}\n",
+            "sample.go": "package main\nfunc mul(a int, b int) int {\n    return a * b\n}\n",
+        }
+
+        for name, content in files.items():
+            (root / name).write_text(content, encoding="utf-8")
+
+        caster = CASter()
+        token_chunker = TokenBoundedChunker()
+        token_chunker.budget.max_chunk_tokens = 128
+
+        chunks: list[SourceChunk] = []
+        for file_name in files:
+            path = root / file_name
+            cast_chunks = caster.chunk_content(path.read_text(encoding="utf-8"), str(path))
+            for cast_chunk in cast_chunks:
+                chunks.extend(token_chunker.split_chunk(cast_chunk))
+
+        assert len(chunks) > 0
+
+        embedder = BatchEmbedder(NimConfig())
+
+        def fake_embed(text: str | list[str], input_type: str = "passage", model: str | None = None):
+            texts = text if isinstance(text, list) else [text]
+            assert input_type == "passage"
+            return [[float(len(t)), 1.0, 0.0] for t in texts]
+
+        monkeypatch.setattr(embedder.embedding_client, "embed", fake_embed)
+
+        embeddings = embedder.embed_chunks(chunks, batch_size=2)
+        assert len(embeddings) == len(chunks)
+
+        store = VectorStore(collection_name="test_chunks")
+        assert store.upsert_chunks(chunks, embeddings) is True

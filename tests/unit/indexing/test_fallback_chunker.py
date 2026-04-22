@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+import buffa.indexing.token_chunker as token_chunker_module
 from buffa.indexing.fallback_chunker import FallbackChunker, ChunkingResult
 from buffa.shared.models import SourceChunk, ChunkMetadata
 
@@ -70,3 +71,23 @@ def test_chunking_result_properties():
     assert result.confidence == 0.8
     assert result.method_used == "fallback"
     assert result.parser_available is False
+
+
+def test_fallback_token_estimator_bpe_within_tolerance():
+    """Verify fallback chunker token estimate is within +/-20% using BPE path."""
+    chunker = FallbackChunker()
+    sample = "class Invoice:\n    def total(self):\n        return sum(i.amount for i in self.items)\n"
+
+    estimated = chunker._estimate_tokens(sample)
+    assert estimated > 0
+
+    estimator = chunker.token_estimator
+    if not estimator.using_bpe or token_chunker_module.tiktoken is None:
+        pytest.skip("tiktoken not available in current environment")
+
+    encoder = token_chunker_module.tiktoken.get_encoding(estimator.encoding_name)
+    actual = len(encoder.encode(sample, disallowed_special=()))
+    assert actual > 0
+
+    relative_error = abs(estimated - actual) / actual
+    assert relative_error <= 0.20
