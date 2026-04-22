@@ -32,7 +32,7 @@
 ---
 
 ## Project Architecture
-<img width="2902" height="6845" alt="mermaid-ai-diagram-2026-04-22-152236" src="https://github.com/user-attachments/assets/357f7480-7bea-462a-bcba-5c170a2fe84e" />
+<img width="8192" height="2337" alt="NIM Client Retrieval-2026-04-22-152442" src="https://github.com/user-attachments/assets/0ea0bfef-1982-4bb8-b8e3-ae3eb460bfec" />
 
 *High‑level flow* (see `PLAN.md` for full details):
 1. **Ingestion** – source files → cAST chunker → `SourceChunk` objects → embeddings → vector DB.
