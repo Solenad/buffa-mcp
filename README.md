@@ -32,25 +32,7 @@
 ---
 
 ## Project Architecture
-
-```
-client (CLI scripts) ──► runtime config loader ──► NIM clients (embedding, reranking, health)
-          │                                             │
-          ▼                                             ▼
-   indexing engine ──► cAST chunker (Tree‑Sitter) ──► fallback chunker
-          │                                             │
-          ▼                                             ▼
-   vector store (e.g. Qdrant / Chroma) ◄─► batch processor (embedding)
-          │
-          ▼
-   retrieval pipeline ──► query embedding ──► hybrid search (semantic + keyword)
-          │                               │
-          ▼                               ▼
-   reranker (NIM) ──► token‑budget packer ──► optional compression cascade
-          │
-          ▼
-   MCP server (stdio transport) – exposes `search_codebase` & `index_status`
-```
+<img width="2902" height="6845" alt="mermaid-ai-diagram-2026-04-22-152236" src="https://github.com/user-attachments/assets/357f7480-7bea-462a-bcba-5c170a2fe84e" />
 
 *High‑level flow* (see `PLAN.md` for full details):
 1. **Ingestion** – source files → cAST chunker → `SourceChunk` objects → embeddings → vector DB.
@@ -194,7 +176,3 @@ buffa-mcp/
 
 ## License
 This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
-
----
-
-*For AI‑focused documentation, see `AGENTS.md` in the repository root.*
